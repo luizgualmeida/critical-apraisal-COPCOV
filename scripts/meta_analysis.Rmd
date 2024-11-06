@@ -11,16 +11,15 @@ knitr::opts_chunk$set(cache = T, cache.comments = FALSE,
                       fig.width = 8, fig.height = 8,
                       fig.pos = 'H',dev = 'png', dpi = 300)
 library(meta)
-getwd()
 ```
 
 ```{r}
-#sessionInfo()
+sessionInfo()
 ```
 
-load data
+# load data
 ```{r}
-fname = "C:/Academico/Estatística/Curso II - PsicoBio/Saw - KM/data/COPCOV_Meta_Analysis_v2.1_15_08_23_Rajasingham_corrected.xlsx"
+fname = "../data/COPCOV_Meta_Analysis_v2.1_15_08_23_Rajasingham_corrected.xlsx"
 my_sheets = readxl::excel_sheets(fname)
 
 ```
@@ -113,7 +112,6 @@ for(ss in c('Primary_endpoint','Laboratory_confirmed')){
                                  sheet = ss,na = 'NA')
   # no incident events in Grau-Pujol so remove
   meta_vals = meta_vals[meta_vals$Study !='Grau-Pujol 2021',]
-  meta_vals = meta_vals[meta_vals$Study !='Schilling 2024',]
 
   
   meta_vals = meta_vals[meta_vals$Study %in% c("Rajasingham 2020",

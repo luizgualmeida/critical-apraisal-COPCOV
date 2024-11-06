@@ -7,11 +7,12 @@ date: "2022-12-21"
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
+
 library(readr)
 library(epitools)
 library(gtsummary)
-getwd()
-
+library(emmeans)
+library(GAMLj3)
 ```
 
 ## 
@@ -24,18 +25,16 @@ sero_outcomes <- read_csv("../data/serology_outcomes.csv")
 
 sero_outcomes$outcome_serology = as.numeric(!is.na(sero_outcomes$outcome))
 
-inclusion_data = readxl::read_excel(path = '../data/Time_events_16_01_2023_REVISED_MM_WS_Latest_FINAL_19_01_23.xlsx') #C:/Academico/Projetos/Cloroquina/Time_events_16_01_2023_REVISED_MM_WS_Latest_FINAL_19_01_23.xlsx'
+inclusion_data = readxl::read_excel(path = '../data/Time_events_16_01_2023_REVISED_MM_WS_Latest_FINAL_19_01_23_merged.xlsx') #C:/Academico/Projetos/Cloroquina/Time_events_16_01_2023_REVISED_MM_WS_Latest_FINAL_19_01_23.xlsx'
 
 
-outcome_dat = merge(inclusion_data[, c('subjectno','treatment','pcr_event', 'age_calyr')], # , 'sex', "anychronic", "comorbidities", "diabetes", "bmi" 
+outcome_dat = merge(inclusion_data[, c('subjectno','treatment','pcr_event', 'age_calyr', 'sex', "anychronic", "comorbidities", "diabetes", "bmi", "PCRcovid", "Serumcovid", "DBScovid" )], 
                     sero_outcomes[,c('subjectno','outcome_serology',
                                      'serum_available','dbs_available',
                                      'type_data')],
                     by = 'subjectno', all.x=T)
 symptomatic = read_delim('../data/Symptomatic.csv',delim = ';')
 outcome_dat = merge(outcome_dat, symptomatic, by='subjectno')
-
-glimpse(outcome_dat)
 
 
 ```
@@ -76,61 +75,95 @@ outcome_dat$DBS_COVID19 = outcome_dat$outcome_serology==1 &
 table(outcome_dat$DBS_COVID19, outcome_dat$treatment)
 getwd()
 
-write_csv(x = outcome_dat,file = '../data/outcomes_derived.csv')
-```
-
-# Risk ratio estimation for primary endpoint
-cloroquina$anychronic <- as.factor(cloroquina$anychronic)
-cloroquina$comorbidities <- as.factor(cloroquina$comorbidities)
-cloroquina$diabetes <- as.factor(cloroquina$diabetes)
-
-```{r}
-riskratio(table(outcome_dat$Primary_endpoint, outcome_dat$treatment),rev='rows',method = 'wald')
+# Transform treatment variable to facotr and change reference level to placebo
 outcome_dat$treatment <- as.factor(outcome_dat$treatment)
 outcome_dat$treatment <- relevel(outcome_dat$treatment, ref = "Placebo")
 
-modelo1 <- glm(Primary_endpoint ~ treatment, data = outcome_dat, family=poisson(link='log'))
-summary(modelo1)
-tbl_regression(modelo1, exponentiate = T)
-mean(outcome_dat$age_calyr)
-median(outcome_dat$age_calyr)
-
-
-
+#write_csv(x = outcome_dat,file = '../data/outcomes_derived.csv') File already in the repository
 ```
+
+# Risk ratio estimation for primary endpoint
+
 
 ```{r}
-modelo1_b <- glm(Primary_endpoint ~ treatment + age_calyr, data = outcome_dat, family=poisson(link='log'))
-tbl_regression(modelo1_b, exponentiate = T)
+riskratio(table(outcome_dat$Primary_endpoint, outcome_dat$treatment),rev='rows',method = 'wald')
 
 ```
 
 
-for PCR endpoint
-
-```{r}
-model2 <- glm(pcr_event ~ treatment + age_calyr, data = outcome_dat, family=poisson(link='log'))
-#summary(model2)
-tbl_regression(model2, exponentiate = T)
-
-confint(model2)
-# Exponenciar os coeficientes e seus intervalos de confiança
-exp(confint(model2))
-
-```
-# Calcular o valor de p de fisher
+# Recreate Fisher's Exact Test p-value
 
 ```{r}
 # Criar uma tabela de contingência
 tabela <- table(outcome_dat$Primary_endpoint, outcome_dat$treatment)
-```
-
-
-```{r}
 fisher.test(tabela)
+
 ```
 
+
+
+# Create models and calculate p-value
+
+## Primary endpoint (All-Cause PCR-Confirmed respiratory illness)
+
+### Treatment as covariable
 ```{r}
-chisq.test(tabela)
+
+model_1 <- glm(Primary_endpoint ~ treatment, data = outcome_dat, family=poisson(link='log'))
+tbl_regression(model_1, exponentiate = T)
 ```
+
+
+### Treatment and age as covariable
+```{r}
+
+outcome_dat$sex <- as.factor(outcome_dat$sex)
+outcome_dat$Primary_endpoint <- as.integer(outcome_dat$Primary_endpoint)
+
+
+# All-Cause PCR-Confirmed respiratory illness adjusted by age and sex
+GAMLj3::gamljglm(
+    formula = Primary_endpoint ~ treatment + sex + age_calyr + treatment:sex,
+    data = outcome_dat,
+    posthoc = ~ treatment,
+    model_type='poisson')
+
+```
+
+### Mean a median age
+```{r}
+mean(outcome_dat$age_calyr)
+median(outcome_dat$age_calyr)
+```
+
+## Primary endpoint (PCR-confirmed COVID-19)
+
+### Treatment as covariable
+
+```{r}
+# Results reporter in the orginal paper and used in the meta-analysis
+
+model_3 <- glm(pcr_event ~ treatment, data = outcome_dat, family=poisson(link='log'))
+tbl_regression(model_3, exponentiate = T)
+
+```
+
+### Treatment and age as covariable
+
+
+```{r}
+outcome_dat$pcr_event <- as.integer(outcome_dat$pcr_event)
+outcome_dat$treatment <- relevel(outcome_dat$treatment, ref = "Chloroquine/Hydroxychloroquine")
+
+# PCR-confirmed COVID-19 adjusted by age and sex
+
+GAMLj3::gamljglm(
+    formula = pcr_event ~ treatment + sex + age_calyr + treatment:sex,
+    data = outcome_dat,
+    posthoc = ~ treatment,
+    model_type='poisson')
+
+```
+
+
 
