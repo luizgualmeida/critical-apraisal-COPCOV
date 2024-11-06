@@ -1,0 +1,204 @@
+```{r}
+library(tidyverse)
+library(foreign)
+library(ggplot2)
+library(gtsummary)
+library(knitr)
+#Específicos para survival
+library(survival)
+library(ggsurvfit)
+library(survminer)
+library(broom)
+library(survMisc)
+library(PHInfiniteEstimates)
+library(coin)
+library(condSURV)
+library(mice)
+library(survivalMPL)
+library(survsim)
+library(jsurvival)
+library(deathwatch)
+```
+
+
+```{r}
+cloroquina <- readxl::read_excel("data/Time_events_16_01_2023_REVISED_MM_WS_Latest_FINAL_19_01_23.xlsx")
+
+
+cloroquina$pcr_event <- as.integer(cloroquina$pcr_event)
+cloroquina$treatment <- as.factor(cloroquina$treatment)
+cloroquina$PCRFu_days <- as.integer(cloroquina$PCRFu_days)
+cloroquina$sex <- as.factor(cloroquina$sex)
+cloroquina$anychronic <- as.factor(cloroquina$anychronic)
+cloroquina$comorbidities <- as.factor(cloroquina$comorbidities)
+cloroquina$diabetes <- as.factor(cloroquina$diabetes)
+```
+
+
+```{r}
+table(cloroquina$All_ill_event, cloroquina$treatment)
+table(cloroquina$pcr_event, cloroquina$treatment)
+```
+
+
+```{r}
+## Modelos
+
+deathwatch::surv(
+  data = cloroquina,
+  elapsed = All_cFu_days,
+  event = All_ill_event,
+  eventLevel = "1",
+  groups = treatment,
+  tests = c("logrank",
+            "gehan",
+            "petopeto",
+            "taroneware"),
+  #testspw = TRUE, # para 3 ou mais grupos
+  ci = TRUE,
+  cens = TRUE,
+  risk = FALSE,
+  median = FALSE)
+
+
+jsurvival::multisurvival(
+  data = cloroquina,
+  elapsedtime = All_cFu_days,
+  dxdate = NULL,
+  fudate = NULL,
+  outcome = All_ill_event,
+  outcomeLevel = "1",
+  dod = NULL,
+  dooc = NULL,
+  awd = NULL,
+  awod = NULL,
+  explanatory = treatment,
+  contexpl = vars(),
+  hr = TRUE,
+  ph_cox = TRUE)
+
+
+jsurvival::survival(
+  data = cloroquina,
+  elapsedtime = All_cFu_days,
+  dxdate = NULL,
+  fudate = NULL,
+  explanatory = treatment,
+  outcome = All_ill_event,
+  outcomeLevel = "1",
+  dod = NULL,
+  dooc = NULL,
+  awd = NULL,
+  awod = NULL,
+  ph_cox = TRUE,
+  sc = TRUE,
+  kmunicate = TRUE,
+  ce = TRUE,
+  ch = TRUE,
+  ci95 = TRUE,
+  risktable = TRUE,
+  censored = TRUE)
+
+
+
+jsurvival::multisurvival(
+  data = cloroquina,
+  elapsedtime = PCRFu_days,
+  dxdate = NULL,
+  fudate = NULL,
+  outcome = pcr_event,
+  outcomeLevel = "1",
+  dod = NULL,
+  dooc = NULL,
+  awd = NULL,
+  awod = NULL,
+  explanatory = treatment,
+  contexpl = vars(),
+  hr = TRUE,
+  ph_cox = TRUE)
+
+
+
+jsurvival::survival(
+  data = cloroquina,
+  elapsedtime = PCRFu_days,
+  dxdate = NULL,
+  fudate = NULL,
+  explanatory = treatment,
+  outcome = pcr_event,
+  outcomeLevel = "1",
+  dod = NULL,
+  dooc = NULL,
+  awd = NULL,
+  awod = NULL,
+  ph_cox = TRUE)
+```
+
+
+```{r}
+survmod = survfit(Surv(PCRFu_days, pcr_event) ~ treatment,
+                  data = cloroquina)
+LRTest=survdiff(Surv(PCRFu_days, pcr_event) ~ treatment,
+                data = cloroquina)
+pchisq(LRTest$chisq, length(LRTest$n)-1, lower.tail = FALSE)
+```
+
+
+```{r}
+survmod_all = survfit(Surv(All_cFu_days, All_ill_event) ~ treatment,
+                      data = cloroquina)
+LRTest=survdiff(Surv(All_cFu_days, All_ill_event) ~ treatment,
+                data = cloroquina)
+pchisq(LRTest$chisq, length(LRTest$n)-1, lower.tail = FALSE)
+```
+
+
+```{r}
+### Plots
+
+
+splots <- list()
+
+splots[[1]] <- 
+  ggsurvplot(survmod_all, conf.int = T,#data = surv_dat,
+             xlim=c(0,90), ylim=c(0, .05), 
+             xlab='Days in study',
+             pval = T,
+             pval.coord = c(10,.03),
+             break.x.by=30,
+             palette = 'Set2',fun = function(x) 1-x,
+             legend.labs = c('Chloroquine/hydroxychloroquine',
+                             'Placebo'),
+             risk.table.y.text.col	= T,
+             risk.table = T,risk.table.y.text=F,
+             legend.title='',
+             font.x=15,font.y=15,font.table=15,
+             font.legend=15,
+             ylab='All-cause PCR-confirmed respiratory illness', 
+             surv.scale='percent', 
+             ggtheme = theme_survminer(base_family='serif'))
+
+splots[[2]] <- ggsurvplot(survmod, conf.int = T,data = cloroquina,
+                          xlim=c(0,90), ylim=c(0, .05), 
+                          xlab='Days in study',
+                          pval = T,
+                          pval.coord = c(10,.03),
+                          break.x.by=30,
+                          palette = 'Set2',fun = function(x) 1-x,
+                          legend.labs = c('Chloroquine/hydroxychloroquine',
+                                          'Placebo'),
+                          risk.table.y.text.col	= T,
+                          risk.table = T,risk.table.y.text=F,
+                          legend.title='',
+                          font.x=15,font.y=15,font.table=15,
+                          font.legend=15,
+                          ylab='PCR-confirmed COVID-19', 
+                          surv.scale='percent', 
+                          ggtheme = theme_survminer(base_family='serif'))
+
+res=
+  arrange_ggsurvplots(splots,
+                      print = T)
+
+```
+
